@@ -1,0 +1,756 @@
+{
+  "name": "Week 1 — Business Intelligence Dashboard",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -352,
+        -96
+      ],
+      "id": "b0bd4b96-db27-41c1-8ef5-74d5100cdf10",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://api.clickup.com/api/v2/team/YOUR_CLICKUP_TEAM_ID/task?include_closed=false",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "YOUR_CLICKUP_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        256,
+        0
+      ],
+      "id": "3cec1c50-a5b0-450f-aeb9-bd3526abce93",
+      "name": "Get ClickUp Tasks"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tasks = $input.first().json.tasks;\n\nconst formatted = tasks.map(task => ({\n  id: task.id,\n  name: task.name,\n  status: task.status.status,\n  priority: task.priority ? task.priority.priority : 'none',\n  due_date: task.due_date ? new Date(parseInt(task.due_date)).toISOString().split('T')[0] : null,\n  url: task.url,\n  list: task.list.name\n}));\n\nreturn formatted.map(task => ({ json: task }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        0
+      ],
+      "id": "7a420093-0e67-4295-a70c-71e97dc30694",
+      "name": "Format Tasks Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://egouwfjkkminpejjzmsh.supabase.co/rest/v1/dashboard_tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($input.all().map(i => i.json)) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        0
+      ],
+      "id": "19eebbab-8cf6-4126-aa0d-53ec17be4c45",
+      "name": "Save to Supabase"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.payload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1632,
+        544
+      ],
+      "id": "9353a643-7817-4c4d-ac2e-734e174818bb",
+      "name": "Generate AI Summary",
+      "credentials": {
+        "anthropicApi": {
+          "id": "YOUR_N8N_CREDENTIAL_ID",
+          "name": "Anthropic-n8n-API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.payload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2032,
+        544
+      ],
+      "id": "c4bb9b32-0ecb-42d7-9793-b55f80868c9b",
+      "name": "Send Telegram Briefing"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $('Generate AI Summary').first().json.content[0].text;\nconst weather = $('Format Weather Data').first().json;\nconst events = $('Format Calendar Data').all().map(i => i.json);\nconst today = new Date().toDateString();\n\nconst sections = response.split('\\n').filter(l => l.trim());\n\nconst message = `📊 <b>Daily Business Briefing</b>\n🗓 <i>${today}</i>\n─────────────────────\n\n🌤 <b>${weather.temp}°C — ${weather.description} in ${weather.city}</b>\n\n📅 <b>Today's Schedule</b>\n${events.map(e => `• ${e.start_time} — ${e.title}`).join('\\n')}\n\n─────────────────────\n${response}\n─────────────────────\n<i>Powered by BridgeFlow x Claude AI</i>`;\n\nreturn [{\n  json: {\n    payload: JSON.stringify({\n      chat_id: \"YOUR_TELEGRAM_CHAT_ID\",\n      text: message,\n      parse_mode: \"HTML\"\n    })\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        544
+      ],
+      "id": "f4e7d00d-3684-4b19-8db3-59cf2dcd2c7e",
+      "name": "Build Telegram Message"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 10,
+        "filters": {
+          "labelIds": [
+            "INBOX"
+          ],
+          "q": "is:unread is:important"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        112,
+        256
+      ],
+      "id": "7da43d5e-b751-47fc-b11b-e294f20683a0",
+      "name": "Get Gmail Important",
+      "webhookId": "b0e0cf99-655c-40c6-86a7-6bde8444da02",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_N8N_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const emails = $input.all().map(i => i.json);\n\nconst formatted = emails.map(email => {\n  // Debug — find where from/subject actually live\n  const from = email.From || email.from || email.headers?.from || '';\n  const subject = email.Subject || email.subject || email.headers?.subject || '';\n  \n  const cleanSnippet = (email.snippet || '')\n    .replace(/[\\u034F\\u200B-\\u200D\\uFEFF\\u00AD\\u034F]/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .substring(0, 150);\n\n  const allLabels = (email.labels || []).map(l => l.name || l);\n  const importantLabels = allLabels.filter(l => \n    !['INBOX','UNREAD','IMPORTANT','CATEGORY_UPDATES','CATEGORY_PROMOTIONS','CATEGORY_SOCIAL'].includes(l)\n  );\n\n  const subjectLower = subject.toLowerCase();\n  const isFinance = importantLabels.some(l => l.toLowerCase().includes('financ') || l.toLowerCase().includes('bill')) ||\n    subjectLower.includes('invoice') || subjectLower.includes('receipt') || subjectLower.includes('payment');\n\n  const isHighPriority = importantLabels.some(l => l.toLowerCase().includes('priority')) ||\n    subjectLower.includes('urgent') || subjectLower.includes('cancelled') || subjectLower.includes('paused');\n\n  return {\n    id: email.id,\n    from,\n    subject,\n    snippet: cleanSnippet,\n    date: email.date || new Date().toISOString().split('T')[0],\n    category: isFinance ? 'Finance' : isHighPriority ? 'High Priority' : 'Updates',\n    labels: importantLabels\n  };\n});\n\nreturn formatted.map(email => ({ json: email }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        256
+      ],
+      "id": "68b5f6fa-1840-4afa-8ed5-acbc64862be9",
+      "name": "Format Gmail Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const emails = $input.all().map(i => {\n  return {\n    id: i.json.id,\n    from: i.json.from,\n    subject: i.json.subject,\n    snippet: i.json.snippet,\n    date: i.json.date,\n    category: i.json.category,\n    labels: i.json.labels\n  };\n});\n\nreturn [{ json: { payload: JSON.stringify(emails) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        256
+      ],
+      "id": "3471be60-cb55-4d41-99b0-11460fa47ee2",
+      "name": "Build Emails Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://egouwfjkkminpejjzmsh.supabase.co/rest/v1/dashboard_emails",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.payload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        704,
+        272
+      ],
+      "id": "3f3f776a-93b8-4335-92a8-7278adee10da",
+      "name": "Save Emails to Supabase"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_CALENDAR_EMAIL",
+          "mode": "list",
+          "cachedResultName": "YOUR_GOOGLE_CALENDAR_EMAIL"
+        },
+        "limit": 10,
+        "timeMin": "={{ new Date().toISOString().split('T')[0] + 'T00:00:00.000Z' }}",
+        "timeMax": "={{ new Date().toISOString().split('T')[0] + 'T23:59:59.000Z' }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        112,
+        544
+      ],
+      "id": "8420d35c-c929-4d3e-8a83-a36a6fbf7bb2",
+      "name": "Get Today's Events",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "YOUR_N8N_CREDENTIAL_ID",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const events = $input.all().map(i => i.json);\n\nconst formatted = events.map(event => ({\n  id: event.id,\n  title: event.summary,\n  start: event.start?.dateTime || event.start?.date,\n  end: event.end?.dateTime || event.end?.date,\n  start_time: event.start?.dateTime \n    ? new Date(event.start.dateTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })\n    : 'All Day',\n  end_time: event.end?.dateTime\n    ? new Date(event.end.dateTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })\n    : 'All Day',\n  description: event.description \n    ? event.description.substring(0, 100).replace(/\\n/g, ' ').trim()\n    : null,\n  status: event.status\n}));\n\nreturn formatted.map(event => ({ json: event }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        544
+      ],
+      "id": "4e4160d2-6e73-463f-b8fb-27241fc2cc0d",
+      "name": "Format Calendar Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://egouwfjkkminpejjzmsh.supabase.co/rest/v1/dashboard_calendar",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_SUPABASE_ANON_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "applcation/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.payload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        512
+      ],
+      "id": "51249618-ee77-4ff7-9923-b52d3e7ba626",
+      "name": "Save Calendar to Supabase",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_N8N_CREDENTIAL_ID",
+          "name": "Testing Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const events = $input.all().map(i => i.json);\nreturn [{ json: { payload: JSON.stringify(events) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        544
+      ],
+      "id": "2e62bac6-5097-4086-ae92-92581ae8bbae",
+      "name": "Build Calendar Payload"
+    },
+    {
+      "parameters": {
+        "cityName": "Riyadh",
+        "language": "en"
+      },
+      "type": "n8n-nodes-base.openWeatherMap",
+      "typeVersion": 1,
+      "position": [
+        128,
+        800
+      ],
+      "id": "15569f50-9501-4fde-91aa-c07a6b6402be",
+      "name": "OpenWeatherMap",
+      "credentials": {
+        "openWeatherMapApi": {
+          "id": "YOUR_N8N_CREDENTIAL_ID",
+          "name": "OpenWeatherMap account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const w = $input.first().json;\n\nconst formatted = {\n  city: w.name,\n  country: w.sys.country,\n  temp: Math.round(w.main.temp),\n  feels_like: Math.round(w.main.feels_like),\n  condition: w.weather[0].main,\n  description: w.weather[0].description,\n  humidity: w.main.humidity,\n  wind_speed: w.wind.speed,\n  icon: w.weather[0].icon\n};\n\nreturn [{ json: formatted }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        800
+      ],
+      "id": "4f6f8dfe-5f1e-4168-8849-deab2b7240c6",
+      "name": "Format Weather Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get data from the nodes that fed into this merge point\nconst allInputs = $input.all();\n\n// Get tasks from Format Tasks Data\nconst tasks = $('Format Tasks Data').all().map(i => i.json);\n\n// Get emails from Format Gmail Data  \nconst emails = $('Format Gmail Data').all().map(i => i.json);\n\n// Get events from Format Calendar Data\nconst events = $('Format Calendar Data').all().map(i => i.json);\n\n// Get weather\nconst weather = $('Format Weather Data').first().json;\n\nconst overdue = tasks.filter(t => t.due_date && t.due_date < new Date().toISOString().split('T')[0]);\nconst highPriority = tasks.filter(t => t.priority === 'urgent' || t.priority === 'high');\nconst financeEmails = emails.filter(e => e.category === 'Finance');\nconst urgentEmails = emails.filter(e => e.category === 'High Priority');\n\nconst prompt = `You are a business intelligence assistant. Generate a structured daily briefing.\n\nWEATHER: ${weather.temp}°C, ${weather.description} in ${weather.city}\n\nTODAY'S SCHEDULE (${events.length} events):\n${events.map(e => `- ${e.start_time}: ${e.title}`).join('\\n')}\n\nTASKS SUMMARY:\n- Total open: ${tasks.length}\n- Overdue: ${overdue.length}\n- High priority: ${highPriority.length}\n${overdue.map(t => `- OVERDUE: ${t.name} (was due ${t.due_date})`).join('\\n')}\n${highPriority.slice(0,3).map(t => `- HIGH: ${t.name} (due ${t.due_date || 'no date'})`).join('\\n')}\n\nEMAILS (${emails.length} unread):\n- Finance: ${financeEmails.length}\n- High Priority: ${urgentEmails.length}\n${urgentEmails.map(e => `- URGENT: ${e.subject} from ${e.from}`).join('\\n')}\n${financeEmails.map(e => `- FINANCE: ${e.subject}`).join('\\n')}\n\nWrite exactly 4 sections:\n1. WEATHER & DAY CONTEXT\n2. SCHEDULE TODAY\n3. TASKS & PRIORITIES\n4. EMAILS & ALERTS\n\nRules: Plain text only. No markdown. No ** or ##. Max 2 sentences per section.`;\n\nreturn [{ json: { payload: JSON.stringify({\n  model: \"claude-haiku-4-5-20251001\",\n  max_tokens: 600,\n  messages: [{ role: \"user\", content: prompt }]\n})}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        544
+      ],
+      "id": "3d70594d-fcf1-4c23-aff6-0022ab6d1022",
+      "name": "Build Master AI Prompt"
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "numberInputs": 4
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1184,
+        512
+      ],
+      "id": "aa5d16aa-906b-481e-9009-95b2477d7c0a",
+      "name": "Wait for All Data"
+    },
+    {
+      "parameters": {
+        "content": "# 🏗️ WEEK 1 — BI DASHBOARD v1.0\n\n## DATA SOURCES\n- ✅ ClickUp Tasks\n- ✅ Gmail Important\n- ✅ Google Calendar\n- ✅ OpenWeatherMap\n- ⏳ Google Ads (v2)\n\n## OUTPUT\n- ✅ Supabase Storage\n- ✅ Telegram Briefing\n- ⏳ Web Dashboard (v2)\n\n## STACK\n- Orchestration: n8n (self-hosted VPS)\n- Storage: Supabase (egouwfjkkminpejjzmsh)\n- AI: Claude Haiku → Sonnet (prod)\n- Notifications: Telegram\n\n## COST\n- Running cost: ~$0.03/month\n- All free tier except Claude API\n\n---\nBuilt by BridgeFlow.Agency\nWeekly Workflow Challenge — Week 1\nApril 2026\n\n---\n⚡ BRIDGEFLOW.AGENCY\n\"I build AI systems that replace manual work\"\n🌐 bridgeflow.agency\n📅 Built: April 2026\n🔖 v1.0.0",
+        "height": 848,
+        "width": 368
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -768,
+        -96
+      ],
+      "typeVersion": 1,
+      "id": "c4d3dcf9-c6de-482d-969e-ca13c0cd7cfd",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "502174ef-1f9f-422c-a70b-48b0906f2816",
+              "name": "workflow_name",
+              "value": "Week 1 — BI Dashboard",
+              "type": "string"
+            },
+            {
+              "id": "1681b77f-1f65-44c4-a5ab-edf644e22a61",
+              "name": "version",
+              "value": "v1.0.0",
+              "type": "string"
+            },
+            {
+              "id": "de32e2aa-95e9-4852-af94-3b290abe47dd",
+              "name": "built_by",
+              "value": "BridgeFlow.Agency",
+              "type": "string"
+            },
+            {
+              "id": "43104f3f-b5b6-4ec4-af8c-5c35556647d9",
+              "name": "built_date",
+              "value": "2026-04-18",
+              "type": "string"
+            },
+            {
+              "id": "22cb417d-df07-41ba-95a6-3ac8713f5ffc",
+              "name": "stack",
+              "value": "n8n + Claude + Supabase + Telegram",
+              "type": "string"
+            },
+            {
+              "id": "84b21530-b93c-4d03-9f1e-447fcd7588ff",
+              "name": "contact",
+              "value": "hello@bridgeflow.agency",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2240,
+        544
+      ],
+      "id": "49b541d6-60ed-4399-a111-8f387424932c",
+      "name": "✅ BridgeFlow Signature"
+    }
+  ],
+  "pinData": {
+    "Schedule Trigger": [
+      {
+        "json": {
+          "timestamp": "2026-04-18T02:49:00.798+05:45",
+          "Readable date": "April 18th 2026, 2:49:00 am",
+          "Readable time": "2:49:00 am",
+          "Day of week": "Saturday",
+          "Year": "2026",
+          "Month": "April",
+          "Day of month": "18",
+          "Hour": "02",
+          "Minute": "49",
+          "Second": "00",
+          "Timezone": "Asia/Kathmandu (UTC+05:45)"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get ClickUp Tasks",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Gmail Important",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Today's Events",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "OpenWeatherMap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get ClickUp Tasks": {
+      "main": [
+        [
+          {
+            "node": "Format Tasks Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Tasks Data": {
+      "main": [
+        [
+          {
+            "node": "Save to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Wait for All Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Gmail Important": {
+      "main": [
+        [
+          {
+            "node": "Format Gmail Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Gmail Data": {
+      "main": [
+        [
+          {
+            "node": "Build Emails Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Emails Payload": {
+      "main": [
+        [
+          {
+            "node": "Save Emails to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Emails to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Wait for All Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get Today's Events": {
+      "main": [
+        [
+          {
+            "node": "Format Calendar Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Calendar Data": {
+      "main": [
+        [
+          {
+            "node": "Build Calendar Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Calendar Payload": {
+      "main": [
+        [
+          {
+            "node": "Save Calendar to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Calendar to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Wait for All Data",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "OpenWeatherMap": {
+      "main": [
+        [
+          {
+            "node": "Format Weather Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Weather Data": {
+      "main": [
+        [
+          {
+            "node": "Wait for All Data",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Build Master AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for All Data": {
+      "main": [
+        [
+          {
+            "node": "Build Master AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram Briefing": {
+      "main": [
+        [
+          {
+            "node": "✅ BridgeFlow Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "1416f1ae-225c-4592-afe1-902367567993",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "id": "7laeVZGPNRafanJ3",
+  "tags": []
+}
