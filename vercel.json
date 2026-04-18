@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/Week 1 — Business Intelligence Dashboard/dashboard.html" }
+  ]
+}
