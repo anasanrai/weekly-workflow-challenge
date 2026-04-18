@@ -6,6 +6,12 @@ An automated business intelligence system that runs every morning at 8am, pulls 
 
 ---
 
+## Live Dashboard
+
+🌐 [weekly-workflow-challenge.vercel.app](https://weekly-workflow-challenge.vercel.app)
+
+---
+
 ## What It Does
 
 ```
